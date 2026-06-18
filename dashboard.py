@@ -1,43 +1,36 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-import matplotlib.pyplot as plt
-import seaborn as sns
 
 st.set_page_config(page_title="COVID-19 Institutional Dashboard", page_icon="🦠", layout="wide")
 
 # -----------------------------
 # Load Data
 # -----------------------------
-@st.cache_data
-def load_data(uploaded_file=None):
-    if uploaded_file is not None:
-        data = pd.read_csv(uploaded_file)
-    else:
-        data = pd.read_csv("covid19dashboard.csv")
 
-    data["Date"] = pd.to_datetime(data["Date"], errors="coerce")
-    numeric_cols = [
-        "Latitude", "Longitude", "TotalConfirmed", "TotalDeaths",
-        "DistinctPatientsTested", "NewInTheLast14Days"
-    ]
-    for col in numeric_cols:
-        data[col] = pd.to_numeric(data[col], errors="coerce")
+data = pd.read_csv("covid19dashboard.csv")
 
-    data = data.dropna(subset=["Date", "InstitutionName", "Latitude", "Longitude"])
-    data["Month"] = data["Date"].dt.to_period("M").astype(str)
-    data["DeathRate"] = data.apply(
-        lambda r: (r["TotalDeaths"] / r["TotalConfirmed"] * 100) if r["TotalConfirmed"] > 0 else 0,
-        axis=1
-    )
-    data["TestingPositivityProxy"] = data.apply(
-        lambda r: (r["TotalConfirmed"] / r["DistinctPatientsTested"] * 100) if r["DistinctPatientsTested"] > 0 else 0,
-        axis=1
-    )
-    return data
+data["Date"] = pd.to_datetime(data["Date"], errors="coerce")
+numeric_cols = [
+    "Latitude", "Longitude", "TotalConfirmed", "TotalDeaths",
+    "DistinctPatientsTested"
+]
+for col in numeric_cols:
+    data[col] = pd.to_numeric(data[col], errors="coerce")
 
-uploaded = st.sidebar.file_uploader("Upload updated COVID CSV", type=["csv"])
-df = load_data(uploaded)
+data = data.dropna(subset=["Date", "InstitutionName", "Latitude", "Longitude"])
+data["Month"] = data["Date"].dt.to_period("M").astype(str)
+data["DeathRate"] = data.apply(
+    lambda r: (r["TotalDeaths"] / r["TotalConfirmed"] * 100) if r["TotalConfirmed"] > 0 else 0,
+    axis=1
+)
+data["TestingPositivityProxy"] = data.apply(
+    lambda r: (r["TotalConfirmed"] / r["DistinctPatientsTested"] * 100) if r["DistinctPatientsTested"] > 0 else 0,
+    axis=1
+)
+
+
+df = data
 
 # -----------------------------
 # Title and Context
@@ -87,7 +80,7 @@ confirmed_range = st.sidebar.slider(
 
 metric_choice = st.sidebar.selectbox(
     "Map bubble size metric",
-    ["TotalConfirmed", "TotalDeaths", "DistinctPatientsTested", "NewInTheLast14Days"]
+    ["TotalConfirmed", "TotalDeaths", "DistinctPatientsTested"]
 )
 
 show_raw_data = st.sidebar.checkbox("Show filtered raw data")
@@ -116,14 +109,12 @@ latest_df = filtered_df.loc[latest_idx].copy()
 st.subheader("Key Performance Indicators")
 kpi1, kpi2, kpi3, kpi4 = st.columns(4)
 
-kpi1.metric("Institutions", latest_df["InstitutionName"].nunique())
-kpi2.metric("Latest Confirmed Cases", f"{int(latest_df['TotalConfirmed'].sum()):,}")
-kpi3.metric("Latest Deaths", f"{int(latest_df['TotalDeaths'].sum()):,}")
-kpi4.metric("Recent Cases, Last 14 Days", f"{int(latest_df['NewInTheLast14Days'].sum()):,}")
+kpi1.metric("Total Institutions", latest_df["InstitutionName"].nunique())
+kpi2.metric("Total Confirmed Cases", f"{int(latest_df['TotalConfirmed'].sum()):,}")
+kpi3.metric("Total Deaths", f"{int(latest_df['TotalDeaths'].sum()):,}")
 
-# -----------------------------
-# Layout: Main Visuals
-# -----------------------------
+
+#Tab Layout
 tab1, tab2, tab3, tab4 = st.tabs([
     "Overview", "Institution Comparison", "Time Trends", "Data Source & QUEST"
 ])
@@ -143,7 +134,6 @@ with tab1:
             "TotalConfirmed": ":,",
             "TotalDeaths": ":,",
             "DistinctPatientsTested": ":,",
-            "NewInTheLast14Days": ":,",
             "Latitude": False,
             "Longitude": False
         },
@@ -189,7 +179,7 @@ with tab2:
 
     comparison_metric = st.radio(
         "Choose comparison metric",
-        ["TotalConfirmed", "TotalDeaths", "DistinctPatientsTested", "NewInTheLast14Days", "DeathRate"],
+        ["TotalConfirmed", "TotalDeaths", "DistinctPatientsTested","DeathRate"],
         horizontal=True
     )
 
@@ -206,16 +196,6 @@ with tab2:
     fig_compare.update_layout(xaxis_tickangle=-45)
     st.plotly_chart(fig_compare, use_container_width=True)
 
-    st.subheader("Correlation Heatmap")
-    st.caption("This helps identify whether high case counts, deaths, testing, and recent activity tend to move together.")
-    corr_cols = ["TotalConfirmed", "TotalDeaths", "DistinctPatientsTested", "NewInTheLast14Days", "DeathRate", "TestingPositivityProxy"]
-    corr = latest_df[corr_cols].corr(numeric_only=True)
-
-    fig, ax = plt.subplots(figsize=(9, 5))
-    sns.heatmap(corr, annot=True, cmap="coolwarm", fmt=".2f", ax=ax)
-    ax.set_title("Correlation Between COVID-19 Measures")
-    st.pyplot(fig)
-
 with tab3:
     st.subheader("Time Series Analysis")
     st.caption("The line chart shows how confirmed cases changed over time for the selected institutions.")
@@ -223,11 +203,11 @@ with tab3:
     trend_level = st.selectbox("View trend by", ["Overall", "Institution"])
 
     if trend_level == "Overall":
-        trend_df = filtered_df.groupby("Date", as_index=False)[["TotalConfirmed", "TotalDeaths", "NewInTheLast14Days"]].sum()
+        trend_df = filtered_df.groupby("Date", as_index=False)[["TotalConfirmed", "TotalDeaths"]].sum()
         fig_line = px.line(
             trend_df,
             x="Date",
-            y=["TotalConfirmed", "TotalDeaths", "NewInTheLast14Days"],
+            y=["TotalConfirmed", "TotalDeaths"],
             markers=False,
             template="plotly_white",
             labels={"value": "Count", "variable": "Metric"}
@@ -244,21 +224,11 @@ with tab3:
         )
     st.plotly_chart(fig_line, use_container_width=True)
 
-    st.subheader("Monthly Recent Cases")
-    monthly_df = filtered_df.groupby("Month", as_index=False)["NewInTheLast14Days"].sum()
-    fig_area = px.area(
-        monthly_df,
-        x="Month",
-        y="NewInTheLast14Days",
-        template="plotly_white",
-        labels={"NewInTheLast14Days": "New Cases in Last 14 Days", "Month": "Month"}
-    )
-    st.plotly_chart(fig_area, use_container_width=True)
 
-    with st.expander("View time series data"):
-        st.table(monthly_df.head(100))
-        csv = monthly_df.to_csv(index=False).encode("utf-8")
-        st.download_button("Download Monthly Data", csv, "monthly_recent_cases.csv", "text/csv")
+    # with st.expander("View time series data"):
+    #     st.table(monthly_df.head(100))
+    #     csv = monthly_df.to_csv(index=False).encode("utf-8")
+    #     st.download_button("Download Monthly Data", csv, "monthly_recent_cases.csv", "text/csv")
 
 with tab4:
     st.subheader("Project Documentation")
